@@ -1,6 +1,20 @@
 import express from "express";
 import "dotenv/config";
 
+// userId -> timestamp
+const userCooldown = new Map();
+
+// cooldown checker (60 seconds default)
+function isOnCooldown(userId, cooldownMs = 60_000) {
+  const now = Date.now();
+  const last = userCooldown.get(userId) || 0;
+
+  if (now - last < cooldownMs) return true;
+
+  userCooldown.set(userId, now);
+  return false;
+}
+
 const app = express();
 
 const required = ["CLIENT_ID", "CLIENT_SECRET", "BOT_TOKEN", "GUILD_ID", "REDIRECT_URI"];
@@ -41,6 +55,11 @@ app.get("/callback", async (req, res) => {
     if (!meRes.ok) return res.status(400).send("ME ERROR: " + meText);
     const me = JSON.parse(meText);
 
+    // ✅ cooldown (per user)
+    if (isOnCooldown(me.id)) {
+      return res.status(429).send("⏳ Slow down — try again in 60 seconds.");
+    }
+
     // 3) Add to guild
     const addRes = await fetch(
       `https://discord.com/api/v10/guilds/${process.env.GUILD_ID}/members/${me.id}`,
@@ -63,4 +82,5 @@ app.get("/callback", async (req, res) => {
   }
 });
 
-app.listen(3000, () => console.log("Listening on http://localhost:3000"));
+const port = process.env.PORT || 3000;
+app.listen(port, () => console.log(`Listening on port ${port}`));
